@@ -161,3 +161,4 @@ cython_debug/
 
 3PC.txt
 *.pdf
+./whiteboard/tests
