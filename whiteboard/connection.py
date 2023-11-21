@@ -84,7 +84,10 @@ class Node:
         self.name = this_instance_name
         self.port = int(this_instance_port)
 
-        self.connected_to = None
+        self.connected_to_whiteboard = None
+        self.connected_to_connection = None
+
+        self.clients_connected = dict()
 
         self.running = True
 
@@ -162,7 +165,6 @@ class Node:
             self.whiteboards_hosted[self.name] = whiteboard.Whiteboard(1650, 800, self.name)
 
         else:
-            # self.whiteboards_hosted['a2'] = whiteboard.Whiteboard(1650, 800, 'a2')
 
             print(YELLOW_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] You already have your own whiteboard!" + RESET_COLOR_TEXT)
 
@@ -244,15 +246,14 @@ class Node:
 
                 if whiteboard_name in self.whiteboards_hosted.keys():
 
-                    self.connected_to = self.whiteboards_hosted[whiteboard_name]
-                    print("!")
+                    self.connected_to_whiteboard = self.whiteboards_hosted[whiteboard_name]
+                    self.connected_to_connection = None
                     return 'connected'
 
                 conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 conn.connect(('127.0.0.1', self.get_instance_port(name) + self.whiteboard_transfer_port))
-
                 conn.send(f'whiteboard;{whiteboard_name}'.encode())
-                print("sent!")
+
                 try:
 
                     answer = conn.recv(1024)
@@ -270,7 +271,8 @@ class Node:
 
                             requested_whiteboard.lines.append([start_point, end_point])
 
-                    self.connected_to = requested_whiteboard
+                    self.connected_to_whiteboard = requested_whiteboard
+                    self.connected_to_connection = conn
 
                     return 'connected'
                     
@@ -280,10 +282,6 @@ class Node:
                         
                     print(RED_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Couldn't receive whiteboard from {name}" + RESET_COLOR_TEXT)
                     return 'not_connected'
-                
-                finally:
-
-                    conn.close()
                 
         return 'not_found'
 
@@ -309,11 +307,18 @@ class Node:
             lines_string = ';'.join(['|'.join([f"{x},{y}" for x, y in inner_tuple]) for inner_tuple in whiteboard_lines])
 
             conn.send(lines_string.encode())
+            print(conn)
+
+            if whiteboard_name in self.clients_connected.keys():
+
+                self.clients_connected[whiteboard_name].append(conn)
+
+            else:
+                    
+                self.clients_connected[whiteboard_name] = [conn]
 
         else:
             conn.send('not_found'.encode())
-
-        conn.close()
 
     def listen_heartbeat(self):
         
@@ -382,10 +387,20 @@ if __name__ == "__main__":
             
         print("Whiteboard connected:")
 
-        if instance.connected_to:
-            print(f"\t-> {instance.connected_to.name}")
+        if instance.connected_to_whiteboard and instance.connected_to_connection:
+            print(f"\t-> {instance.connected_to_whiteboard.name}")
         else:
             print("\t-> None")
+
+        print("Whiteboards hosted:")
+
+        if len(instance.whiteboards_hosted) == 0:
+            print("\t-> None")
+        else:
+            for whiteboard_name in instance.whiteboards_hosted.keys():
+                print(f"\t-> {whiteboard_name}")
+                if whiteboard_name in instance.clients_connected.keys():
+                    print(f"\t\t-> {len(instance.clients_connected[whiteboard_name])} clients connected")
 
         print("Options:")
         print("| (1) - Create whiteboard | (2) - Ask for available whiteboards | (3) - Connect to whiteboard | (4) - Render connected whiteboard | (5) - Clear terminal | (6) - Exit |")
@@ -423,8 +438,10 @@ if __name__ == "__main__":
 
         elif option == '4':
                     
-            if instance.connected_to:
-                instance.connected_to.render()
+            if instance.connected_to_whiteboard:
+                instance.connected_to_whiteboard.render()
+            else:
+                print(YELLOW_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] You're not connected to any whiteboard" + RESET_COLOR_TEXT)
 
         elif option == '5':
                 
