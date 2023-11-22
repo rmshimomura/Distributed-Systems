@@ -20,7 +20,7 @@ class Whiteboard:
         self.host_place = host_place
         self.connections = []
         self.lines_being_modified = []
-        self.line_safe_to_move = True
+        self.line_i_want_is_safe_to_move = True
         
 
     def start_window(self, width, height, name):
@@ -78,7 +78,6 @@ class Whiteboard:
 
             self.pygame_instance.display.flip()
 
-            # Control the frame rate
             self.pygame_instance.time.Clock().tick(60)
 
             self.handle_events()
@@ -95,7 +94,28 @@ class Whiteboard:
             self.connections[0].close()
             self.keep_server_running = False
             return False
-    
+
+    def render_lines(self):
+
+        if len(self.lines):
+
+            temp = self.lines.copy()
+
+            for line, (start, end) in enumerate(temp):
+                self.pygame_instance.draw.line(self.window, BLACK, start, end, 2)
+                self.pygame_instance.draw.circle(self.window, RED, start, 5)
+                self.pygame_instance.draw.circle(self.window, RED, end, 5)
+
+            if self.start_point_motion and self.end_point_motion:
+                self.pygame_instance.draw.line(self.window, BLACK, self.start_point_motion, self.end_point_motion, 2)
+                self.pygame_instance.draw.circle(self.window, RED, self.start_point_motion, 5)
+                self.pygame_instance.draw.circle(self.window, RED, self.end_point_motion, 5)
+
+        elif self.start_point_motion and self.end_point_motion:
+            self.pygame_instance.draw.line(self.window, BLACK, self.start_point_motion, self.end_point_motion, 2)
+            self.pygame_instance.draw.circle(self.window, RED, self.start_point_motion, 5)
+            self.pygame_instance.draw.circle(self.window, RED, self.end_point_motion, 5)
+
     def await_changes(self, conn):
 
         while self.keep_server_running:
@@ -125,24 +145,18 @@ class Whiteboard:
                                     self.connections.remove(connection)
                                     self.update_threads.pop(index)
                                     return
-                                    print(thread, connection)
-                                    thread.join()
-                                    print("Thread joined")
-                                    print("Connection removed")
-                                    print("Thread removed")
-                                    break
                             
                             break
 
                 elif 'OK' in response:
 
                     if self.host_place == 'remote':
-                        self.line_safe_to_move = True
+                        self.line_i_want_is_safe_to_move = True
                     elif self.host_place == 'local':
                         print(RED_COLOR_TEXT + "Local received OK from server???" + RESET_COLOR_TEXT)
 
                 elif 'NO' in response:
-                    self.line_safe_to_move = False
+                    self.line_i_want_is_safe_to_move = False
 
                 elif 'C' in response:
                     # Create the line
@@ -182,7 +196,7 @@ class Whiteboard:
                             for line in self.lines_being_modified:
                                 if line[0] == old_p1 and line[1] == old_p2:
                                     self.lines_being_modified.remove(line)
-                                    self.line_safe_to_move = True
+                                    self.line_i_want_is_safe_to_move = True
                                     break
                             break
 
@@ -223,22 +237,6 @@ class Whiteboard:
                 time.sleep(5)
                 continue
 
-    def render_lines(self):
-
-        if len(self.lines):
-
-            temp = self.lines.copy()
-
-            for line, (start, end) in enumerate(temp):
-                self.pygame_instance.draw.line(self.window, BLACK, start, end, 2)
-                self.pygame_instance.draw.circle(self.window, RED, start, 5)
-                self.pygame_instance.draw.circle(self.window, RED, end, 5)
-
-            if self.start_point_motion and self.end_point_motion:
-                self.pygame_instance.draw.line(self.window, BLACK, self.start_point_motion, self.end_point_motion, 2)
-                self.pygame_instance.draw.circle(self.window, RED, self.start_point_motion, 5)
-                self.pygame_instance.draw.circle(self.window, RED, self.end_point_motion, 5)
-
     def line_creation_notice(self, line_start, line_end):
 
         if self.host_place == 'local':
@@ -275,12 +273,12 @@ class Whiteboard:
             for p1, p2 in self.lines_being_modified:
                 if p1 == line_start and p2 == line_end:
                     found = True
-                    self.line_safe_to_move = False
+                    self.line_i_want_is_safe_to_move = False
                     break
 
             if not found:
                 self.lines_being_modified.append([line_start, line_end])
-                self.line_safe_to_move = True
+                self.line_i_want_is_safe_to_move = True
 
         elif self.host_place == 'remote':
 
@@ -326,11 +324,11 @@ class Whiteboard:
 
                             self.line_request_notice(p1, p2)
 
-                            if not self.line_safe_to_move:
+                            if not self.line_i_want_is_safe_to_move:
                                 print(RED_COLOR_TEXT + "Line is locked, please wait" + RESET_COLOR_TEXT)
                                 continue
                             
-                            self.start_point_motion, self.end_point_motion = p1, p2
+                            self.start_point_motion, self.end_point_motion = list(p1), list(p2)
                             self.dragging_line_start = True
                             self.line_being_moved = self.lines.pop(i)
                             break
@@ -339,11 +337,11 @@ class Whiteboard:
 
                             self.line_request_notice(p1, p2)
 
-                            if not self.line_safe_to_move:
+                            if not self.line_i_want_is_safe_to_move:
                                 print(RED_COLOR_TEXT + "Line is locked, please wait" + RESET_COLOR_TEXT)
                                 continue
 
-                            self.start_point_motion, self.end_point_motion = p1, p2
+                            self.start_point_motion, self.end_point_motion = list(p1), list(p2)
                             self.dragging_line_end = True
                             self.line_being_moved = self.lines.pop(i)
                             break
@@ -353,9 +351,9 @@ class Whiteboard:
 
                 # Update the coordinates when dragging
                 if self.dragging_line_start:
-                    self.start_point_motion = event.pos
+                    self.start_point_motion = list(event.pos)
                 elif self.dragging_line_end:
-                    self.end_point_motion = event.pos
+                    self.end_point_motion = list(event.pos)
 
             elif event.type == self.pygame_instance.MOUSEBUTTONUP:
 
