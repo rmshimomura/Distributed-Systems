@@ -45,7 +45,6 @@ class Whiteboard:
         self.pygame_instance.display.set_caption(f"Whiteboard {name}")
         self.render_interface = True
 
-
     def start_remote_thread(self, conn):
         # Function only used when a client connects to a server
         self.host_place = 'remote'
@@ -86,7 +85,7 @@ class Whiteboard:
 
         if self.host_place == 'local':
             # Continue running the server
-            print("Server is still running")
+            print("Window closed, but server is still running")
             return True
         elif self.host_place == 'remote':
             print("Sending exit message to server")
@@ -136,7 +135,6 @@ class Whiteboard:
                     # Response only received when a client disconnects from the server
 
                     for i in range(len(self.connections)):
-                        print(self.connections[i] == conn)
                         if self.connections[i] == conn:
 
                             for index, (thread, connection) in enumerate(self.update_threads):
@@ -152,11 +150,13 @@ class Whiteboard:
 
                     if self.host_place == 'remote':
                         self.line_i_want_is_safe_to_move = True
+                        self.waiting_request_answer = False
                     elif self.host_place == 'local':
                         print(RED_COLOR_TEXT + "Local received OK from server???" + RESET_COLOR_TEXT)
 
                 elif 'NO' in response:
                     self.line_i_want_is_safe_to_move = False
+                    self.waiting_request_answer = False
 
                 elif 'C' in response:
                     # Create the line
@@ -196,7 +196,6 @@ class Whiteboard:
                             for line in self.lines_being_modified:
                                 if line[0] == old_p1 and line[1] == old_p2:
                                     self.lines_being_modified.remove(line)
-                                    self.line_i_want_is_safe_to_move = True
                                     break
                             break
 
@@ -234,7 +233,6 @@ class Whiteboard:
                         pass
             except Exception as e:
                 print(e)
-                time.sleep(5)
                 continue
 
     def line_creation_notice(self, line_start, line_end):
@@ -274,11 +272,13 @@ class Whiteboard:
                 if p1 == line_start and p2 == line_end:
                     found = True
                     self.line_i_want_is_safe_to_move = False
+                    self.waiting_request_answer = False
                     break
 
             if not found:
                 self.lines_being_modified.append([line_start, line_end])
                 self.line_i_want_is_safe_to_move = True
+                self.waiting_request_answer = False
 
         elif self.host_place == 'remote':
 
@@ -322,11 +322,16 @@ class Whiteboard:
 
                         if self.line_start.collidepoint(event.pos):
 
+                            self.waiting_request_answer = True
+
                             self.line_request_notice(p1, p2)
+
+                            while self.waiting_request_answer:
+                                continue
 
                             if not self.line_i_want_is_safe_to_move:
                                 print(RED_COLOR_TEXT + "Line is locked, please wait" + RESET_COLOR_TEXT)
-                                continue
+                                break
                             
                             self.start_point_motion, self.end_point_motion = list(p1), list(p2)
                             self.dragging_line_start = True
@@ -335,11 +340,16 @@ class Whiteboard:
 
                         elif self.line_end.collidepoint(event.pos):
 
+                            self.waiting_request_answer = True
+
                             self.line_request_notice(p1, p2)
+
+                            while self.waiting_request_answer:
+                                continue
 
                             if not self.line_i_want_is_safe_to_move:
                                 print(RED_COLOR_TEXT + "Line is locked, please wait" + RESET_COLOR_TEXT)
-                                continue
+                                break
 
                             self.start_point_motion, self.end_point_motion = list(p1), list(p2)
                             self.dragging_line_end = True
@@ -361,14 +371,16 @@ class Whiteboard:
 
                 if event.button == self.pygame_instance.BUTTON_RIGHT:
 
-                    if self.dragging_line_start or self.dragging_line_end:
+                    if self.line_i_want_is_safe_to_move:
 
-                        self.line_movement_notice(self.line_being_moved[0], self.line_being_moved[1], self.start_point_motion, self.end_point_motion)
+                        if self.dragging_line_start or self.dragging_line_end:
 
-                        self.lines.insert(0, [list(self.start_point_motion), list(self.end_point_motion)])
+                            self.line_movement_notice(self.line_being_moved[0], self.line_being_moved[1], self.start_point_motion, self.end_point_motion)
 
-                        self.dragging_line_start = False
-                        self.dragging_line_end = False
-                        self.start_point_motion = None
-                        self.end_point_motion = None
-                        self.line_being_moved = None
+                            self.lines.insert(0, [list(self.start_point_motion), list(self.end_point_motion)])
+
+                            self.dragging_line_start = False
+                            self.dragging_line_end = False
+                            self.start_point_motion = None
+                            self.end_point_motion = None
+                            self.line_being_moved = None
