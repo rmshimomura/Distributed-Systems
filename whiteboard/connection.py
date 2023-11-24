@@ -74,7 +74,13 @@ class Node:
     def exit_program(self):
 
         for whiteboard in self.whiteboards_hosted.values():
+
             whiteboard.keep_server_running = False
+            
+            for conn in whiteboard.connections:
+
+                conn.close()
+                time.sleep(0.01)
 
         self.running = False
         self.close_sockets()

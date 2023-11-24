@@ -1,4 +1,4 @@
-import pygame, sys, threading, time
+import pygame, sys, threading, time, datetime
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -82,16 +82,27 @@ class Whiteboard:
 
             self.handle_events()
 
+        self.pygame_instance.quit()
+
         # Window closed
+        print("Window closed")
 
         if self.host_place == 'local':
             # Continue running the server
             print("Window closed, but server is still running")
             return True
         elif self.host_place == 'remote':
+
             print("Sending exit message to server")
-            self.connections[0].send("EXIT".encode())
-            self.connections[0].close()
+
+            try:
+
+                self.connections[0].send("EXIT".encode())
+                self.connections[0].close()
+
+            except ConnectionResetError:
+                print(RED_COLOR_TEXT + "Connection reset error" + RESET_COLOR_TEXT)
+
             self.keep_server_running = False
             return False
 
@@ -232,9 +243,19 @@ class Whiteboard:
                     elif self.host_place == 'remote':
                         print(RED_COLOR_TEXT + "Remote received request to request a line???" + RESET_COLOR_TEXT)
                         pass
-            except Exception as e:
-                print(e)
-                continue
+            except ConnectionAbortedError:
+                if self.host_place == 'local':
+                    pass
+                elif self.host_place == 'remote':
+                    print(RED_COLOR_TEXT + "What" + RESET_COLOR_TEXT)
+                break
+            except ConnectionResetError:
+                print(RED_COLOR_TEXT + "Connection with server has been lost!" + RESET_COLOR_TEXT)
+                print("Need to launch election to choose a new server!!")
+                print(time.time_ns())
+                self.render_interface = False
+                self.keep_server_running = False
+                break
 
     def line_creation_notice(self, line_start, line_end):
 
@@ -247,7 +268,12 @@ class Whiteboard:
         elif self.host_place == 'remote':
             # If this instance is a client, send the line to the server
             # Then, on server side, the server will send the line to each client
-            self.connections[0].send(f"C:{line_start[0]},{line_start[1]},{line_end[0]},{line_end[1]}".encode())
+
+            try:
+                self.connections[0].send(f"C:{line_start[0]},{line_start[1]},{line_end[0]},{line_end[1]}".encode())
+            except ConnectionResetError:
+                self.keep_server_running = False
+                print(RED_COLOR_TEXT + "Connection with server lost" + RESET_COLOR_TEXT)
 
     def line_movement_notice(self, old_start_point, old_end_point, new_start_point, new_end_point):
 
@@ -261,7 +287,11 @@ class Whiteboard:
 
             # If this instance is a client, send the line to the server
             # Then, on server side, the server will send the line to each client
-            self.connections[0].send(f"M:{old_start_point[0]},{old_start_point[1]},{old_end_point[0]},{old_end_point[1]}>{new_start_point[0]},{new_start_point[1]},{new_end_point[0]},{new_end_point[1]}".encode())
+            try:
+                self.connections[0].send(f"M:{old_start_point[0]},{old_start_point[1]},{old_end_point[0]},{old_end_point[1]}>{new_start_point[0]},{new_start_point[1]},{new_end_point[0]},{new_end_point[1]}".encode())
+            except ConnectionResetError:
+                self.keep_server_running = False
+                print(RED_COLOR_TEXT + "Connection with server lost" + RESET_COLOR_TEXT)
 
     def line_request_notice(self, line_start, line_end):
 
@@ -284,7 +314,11 @@ class Whiteboard:
         elif self.host_place == 'remote':
 
             # Send a message to server to check if the line is locked
-            self.connections[0].send(f"R:{line_start[0]},{line_start[1]},{line_end[0]},{line_end[1]}".encode())
+            try:
+                self.connections[0].send(f"R:{line_start[0]},{line_start[1]},{line_end[0]},{line_end[1]}".encode())
+            except ConnectionResetError:
+                self.keep_server_running = False
+                print(RED_COLOR_TEXT + "Connection with server lost" + RESET_COLOR_TEXT)
 
     def handle_events(self):
 
