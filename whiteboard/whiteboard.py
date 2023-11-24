@@ -11,10 +11,10 @@ RESET_COLOR_TEXT = '\033[0m'
 
 class Whiteboard:
 
-    def __init__(self, width, height, name, host_place):
+    def __init__(self, width, height, instance_name, whiteboard_name, host_place):
 
         self.keep_server_running = True
-        self.start_window(width, height, name)
+        self.start_window(width, height, instance_name, whiteboard_name)
         self.render_interface = False
         self.lines = []
         self.host_place = host_place
@@ -23,11 +23,12 @@ class Whiteboard:
         self.line_i_want_is_safe_to_move = True
         
 
-    def start_window(self, width, height, name):
+    def start_window(self, width, height, instance_name, whiteboard_name):
             
         self.width = width
         self.height = height
-        self.name = name
+        self.whiteboard_name = whiteboard_name
+        self.instance_name = instance_name
         self.update_threads = []
 
         self.dragging_line_start = False
@@ -38,11 +39,11 @@ class Whiteboard:
     
         self.window = None
 
-    def initialize_pygame(self, name):
+    def initialize_pygame(self, whiteboard_name):
         self.pygame_instance = pygame
         self.pygame_instance.init()
         self.window = self.pygame_instance.display.set_mode((self.width, self.height))
-        self.pygame_instance.display.set_caption(f"Whiteboard {name}")
+        self.pygame_instance.display.set_caption(f"Instance {self.instance_name} - Whiteboard {whiteboard_name}")
         self.render_interface = True
 
     def start_remote_thread(self, conn):
@@ -65,7 +66,7 @@ class Whiteboard:
 
     def render(self, host_place):
 
-        self.initialize_pygame(self.name)
+        self.initialize_pygame(self.whiteboard_name)
 
         self.host_place = host_place
 

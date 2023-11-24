@@ -166,7 +166,7 @@ class Node:
 
         if self.name not in self.whiteboards_hosted.keys():
 
-            self.whiteboards_hosted[self.name] = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, 'local')
+            self.whiteboards_hosted[self.name] = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, self.name, 'local')
 
         else:
 
@@ -260,7 +260,7 @@ class Node:
 
                     answer = conn.recv(1024)
 
-                    requested_whiteboard = whiteboard.Whiteboard(WIDTH, HEIGHT, whiteboard_name, 'remote')
+                    requested_whiteboard = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, whiteboard_name, 'remote')
 
                     if answer.decode() != 'empty':
 
@@ -324,55 +324,6 @@ class Node:
             except:
                 continue
 
-    # def close_connection(self, conn):
-
-        
-
-
-'''
-    def listen_heartbeat(self):
-        
-        global FALSE_POSITIVES
-
-        while self.running:
-
-            try:
-
-                message, addr = self.socket_heartbeat.recvfrom(1024)
-
-                host_ip = addr[0]
-
-                if host_ip not in [ip[0] for ip in self.ips_to_send]:
-                    
-                    if host_ip in self.ips_history.keys():
-
-                        print(YELLOW_COLOR_TEXT + f"\n[{datetime.datetime.now().time().strftime('%H:%M:%S')}] {self.ips_history[host_ip]} ({host_ip}) is trying to connect again" + RESET_COLOR_TEXT)
-                        self.ips_to_send.append((host_ip, self.ips_history[host_ip]))
-                        print(GREEN_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Connection with {self.ips_history[host_ip]} ({host_ip}) reestablished" + RESET_COLOR_TEXT)
-                        FALSE_POSITIVES += 1
-
-                    else:
-
-                        print(RED_COLOR_TEXT + f"\n[{datetime.datetime.now().time().strftime('%H:%M:%S')}] {host_ip} is trying to connect, but is not in the list of IPs" + RESET_COLOR_TEXT)
-                        continue
-
-                self.last_heartbeat_time[host_ip] = time.time()
-
-            except:
-                    
-                continue
-
-    def send_heartbeat(self):
-
-        while self.running:
-
-            for port in self.available_ports.values():
-
-                self.socket_heartbeat.sendto(b'heartbeat', ('127.0.0.1', port + self.heartbeat_port))
-
-            time.sleep(self.heartbeat_interval)
-'''
-
 if __name__ == "__main__":
 
     discovered = False
@@ -395,13 +346,6 @@ if __name__ == "__main__":
         print("Instance name: " + YELLOW_COLOR_TEXT + f"{instance.name}" + RESET_COLOR_TEXT + " running on port " + YELLOW_COLOR_TEXT + f"{instance.port}" + RESET_COLOR_TEXT)
 
         print_available_whiteboards(instance)
-            
-        print("Whiteboard connected:")
-
-        if instance.connected_to_whiteboard and instance.connected_to_connection:
-            print(f"\t-> {instance.connected_to_whiteboard.name}")
-        else:
-            print("\t-> None")
 
         print("Whiteboards hosted:")
 
