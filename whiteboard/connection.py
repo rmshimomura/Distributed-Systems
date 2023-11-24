@@ -172,7 +172,7 @@ class Node:
 
         if self.name not in self.whiteboards_hosted.keys():
 
-            self.whiteboards_hosted[self.name] = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, self.name, 'local')
+            self.whiteboards_hosted[self.name] = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, self.name, 'local', self.port, self.port)
 
         else:
 
@@ -260,13 +260,13 @@ class Node:
 
                 conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 conn.connect(('127.0.0.1', self.get_instance_port(name) + self.whiteboard_transfer_port))
-                conn.send(f'whiteboard;{whiteboard_name}'.encode())
+                conn.send(f'whiteboard;{whiteboard_name};{self.port}'.encode())
 
                 try:
 
                     answer = conn.recv(1024)
 
-                    requested_whiteboard = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, whiteboard_name, 'remote')
+                    requested_whiteboard = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, whiteboard_name, 'remote', self.get_instance_port(name), self.port)
 
                     if answer.decode() != 'empty':
 
@@ -278,10 +278,23 @@ class Node:
                             end_point = list([int(x) for x in end_point.split(',')])
                             requested_whiteboard.lines.append([start_point, end_point])
 
-                    requested_whiteboard.start_remote_thread(conn)
-
                     self.connected_to_whiteboard = requested_whiteboard
                     self.connected_to_connection = conn
+
+                    try:
+                        other_clients = conn.recv(1024).decode().split(';')
+
+                        if other_clients[0] == 'empty':
+                            other_clients = []
+                        else:
+                            self.connected_to_whiteboard.other_clients = [int(x) for x in other_clients]
+
+                    except Exception as e:
+                        print(e)
+                        other_clients = []
+                        self.connected_to_whiteboard.other_clients = []
+
+                    requested_whiteboard.start_remote_thread(conn)
 
                     return 'connected'
                     
@@ -299,9 +312,12 @@ class Node:
         while self.running:
 
             try:
+
                 conn, (addr, temp_port) = self.socket_whiteboard_transfer.accept()
 
-                whiteboard_name = conn.recv(1024).decode().split(';')[1]
+                parts = conn.recv(1024).decode().split(';')
+
+                whiteboard_name, port_origin = parts[1], int(parts[2])
 
                 print("Received request for whiteboard " + YELLOW_COLOR_TEXT + f"{whiteboard_name}" + RESET_COLOR_TEXT)
 
@@ -309,20 +325,27 @@ class Node:
 
                     if len(self.whiteboards_hosted[whiteboard_name].lines) == 0:
                             
-                        print(YELLOW_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] {whiteboard_name} is empty" + RESET_COLOR_TEXT)
                         conn.send('empty'.encode())
 
-                        self.whiteboards_hosted[whiteboard_name].start_local_thread(conn)
+                    else:
 
-                        continue
+                        whiteboard_lines = self.whiteboards_hosted[whiteboard_name].lines
 
-                    whiteboard_lines = self.whiteboards_hosted[whiteboard_name].lines
+                        lines_string = ';'.join(['|'.join([f"{x},{y}" for x, y in inner_tuple]) for inner_tuple in whiteboard_lines])
 
-                    lines_string = ';'.join(['|'.join([f"{x},{y}" for x, y in inner_tuple]) for inner_tuple in whiteboard_lines])
+                        conn.send(lines_string.encode())
 
-                    conn.send(lines_string.encode())
+                    if len(self.whiteboards_hosted[whiteboard_name].other_clients) > 0:
+                        print("Sending other clints")
+                        conn.send(';'.join([str(x) for x in self.whiteboards_hosted[whiteboard_name].other_clients]).encode())
+                    else:
+                        conn.send('empty'.encode())
 
                     self.whiteboards_hosted[whiteboard_name].start_local_thread(conn)
+
+                    self.whiteboards_hosted[whiteboard_name].other_clients.append(int(port_origin))
+
+                    self.whiteboards_hosted[whiteboard_name].announce_new_client(port_origin)
 
                 else:
                     conn.send('not_found'.encode())

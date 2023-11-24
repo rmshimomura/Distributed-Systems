@@ -11,7 +11,7 @@ RESET_COLOR_TEXT = '\033[0m'
 
 class Whiteboard:
 
-    def __init__(self, width, height, instance_name, whiteboard_name, host_place):
+    def __init__(self, width, height, instance_name, whiteboard_name, host_place, running_on_port, whiteboard_instance_port):
 
         self.keep_server_running = True
         self.start_window(width, height, instance_name, whiteboard_name)
@@ -21,6 +21,9 @@ class Whiteboard:
         self.connections = []
         self.lines_being_modified = []
         self.line_i_want_is_safe_to_move = True
+        self.other_clients = []
+        self.running_on_port = running_on_port
+        self.whiteboard_instance_port = whiteboard_instance_port
         
 
     def start_window(self, width, height, instance_name, whiteboard_name):
@@ -64,11 +67,38 @@ class Whiteboard:
         self.update_threads.append([self.local_thread, conn])
         self.connections.append(conn)
 
+    def announce_new_client(self, port):
+
+        print("Announcing new client")
+
+        if self.host_place == 'local':
+
+            for conn in self.connections:
+                conn.send(f"P:{port}".encode())
+
+        elif self.host_place == 'remote':
+            print(RED_COLOR_TEXT + "Remote received request to announce a new client???" + RESET_COLOR_TEXT)
+
+    def announce_client_disconnection(self, port):
+            
+        print("Announcing client disconnection")
+
+        if self.host_place == 'local':
+
+            for conn in self.connections:
+                conn.send(f"D:{port}".encode())
+
+        elif self.host_place == 'remote':
+            print(RED_COLOR_TEXT + "Remote received request to announce a client disconnection???" + RESET_COLOR_TEXT)
+
     def render(self, host_place):
 
         self.initialize_pygame(self.whiteboard_name)
 
         self.host_place = host_place
+
+        if self.host_place == 'local':
+            self.announce_new_client(self.running_on_port)
 
         while self.render_interface:
 
@@ -90,6 +120,7 @@ class Whiteboard:
         if self.host_place == 'local':
             # Continue running the server
             print("Window closed, but server is still running")
+            self.announce_client_disconnection(self.running_on_port)
             return True
         elif self.host_place == 'remote':
 
@@ -97,8 +128,8 @@ class Whiteboard:
 
             try:
 
-                self.connections[0].send("EXIT".encode())
-                self.connections[0].close()
+                self.connections[0].send(f"EXIT;{self.whiteboard_instance_port}".encode())
+                
 
             except ConnectionResetError:
                 print(RED_COLOR_TEXT + "Connection reset error" + RESET_COLOR_TEXT)
@@ -140,11 +171,13 @@ class Whiteboard:
                 if not response:
                     break
 
-                print(f"RESPONSE: {response}")
-
                 if 'EXIT' in response:
 
                     # Response only received when a client disconnects from the server
+
+                    print(YELLOW_COLOR_TEXT + "Client disconnected" + RESET_COLOR_TEXT)
+
+                    port = response.split(';')[1]
 
                     for i in range(len(self.connections)):
                         if self.connections[i] == conn:
@@ -154,11 +187,15 @@ class Whiteboard:
                                 if connection == conn:
                                     self.connections.remove(connection)
                                     self.update_threads.pop(index)
+                                    self.announce_client_disconnection(port)
                                     return
                             
                             break
 
+
                 elif 'OK' in response:
+
+                    print(GREEN_COLOR_TEXT + "Line is safe to move" + RESET_COLOR_TEXT)
 
                     if self.host_place == 'remote':
                         self.line_i_want_is_safe_to_move = True
@@ -167,11 +204,38 @@ class Whiteboard:
                         print(RED_COLOR_TEXT + "Local received OK from server???" + RESET_COLOR_TEXT)
 
                 elif 'NO' in response:
+
+                    print(RED_COLOR_TEXT + "Line is locked, please wait" + RESET_COLOR_TEXT)
+
                     self.line_i_want_is_safe_to_move = False
                     self.waiting_request_answer = False
 
+                elif 'P' in response:
+
+                    print(YELLOW_COLOR_TEXT + "New client connected" + RESET_COLOR_TEXT)
+
+                    port = int(response[2:])
+
+                    if port not in self.other_clients:
+                        self.other_clients.append(port)
+                        self.other_clients.sort()
+                        print(f"Connected clients: {self.other_clients}")
+
+                elif 'D' in response:
+
+                    print(YELLOW_COLOR_TEXT + "Client disconnected" + RESET_COLOR_TEXT)
+
+                    port = int(response[2:])
+
+                    if port in self.other_clients:
+                        self.other_clients.remove(port)
+                        self.other_clients.sort()
+                        print(f"Connected clients: {self.other_clients}")
+
                 elif 'C' in response:
                     # Create the line
+
+                    print(GREEN_COLOR_TEXT + "Creating line" + RESET_COLOR_TEXT)
 
                     points = response[2:].split(',')
                     p1 = [int(points[0]), int(points[1])]
@@ -193,6 +257,8 @@ class Whiteboard:
 
                 elif 'M' in response:
                     # Move the line
+
+                    print(GREEN_COLOR_TEXT + "Moving line" + RESET_COLOR_TEXT)
 
                     points = response[2:].split('>')
                     old_points = points[0].split(',')
@@ -234,25 +300,23 @@ class Whiteboard:
                             if p1 == start_point and p2 == end_point:
                                 found = True
                                 conn.send("NO".encode())
+                                print(RED_COLOR_TEXT + "Request denied." + RESET_COLOR_TEXT)
                                 break
 
                         if not found:
                             self.lines_being_modified.append([start_point, end_point])
                             conn.send("OK".encode())
+                            print(GREEN_COLOR_TEXT + "Request accepted." + RESET_COLOR_TEXT)
 
                     elif self.host_place == 'remote':
                         print(RED_COLOR_TEXT + "Remote received request to request a line???" + RESET_COLOR_TEXT)
                         pass
             except ConnectionAbortedError:
-                if self.host_place == 'local':
-                    pass
-                elif self.host_place == 'remote':
-                    print(RED_COLOR_TEXT + "What" + RESET_COLOR_TEXT)
                 break
             except ConnectionResetError:
                 print(RED_COLOR_TEXT + "Connection with server has been lost!" + RESET_COLOR_TEXT)
                 print("Need to launch election to choose a new server!!")
-                print(time.time_ns())
+                print(f"Time of detection: {time.time_ns()}")
                 self.render_interface = False
                 self.keep_server_running = False
                 break
