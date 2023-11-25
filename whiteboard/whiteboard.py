@@ -1,4 +1,4 @@
-import pygame, sys, threading, time, datetime
+import pygame, sys, threading, time, datetime, socket
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -8,6 +8,11 @@ RED_COLOR_TEXT = '\033[31m'
 GREEN_COLOR_TEXT = '\033[32m'
 YELLOW_COLOR_TEXT = '\033[33m'
 RESET_COLOR_TEXT = '\033[0m'
+
+HEARTBEAT_PORT = 0
+WHITEBOARD_DISCOVER_PORT = 1
+WHITEBOARD_TRANSFER_PORT = 2
+ELECTION_PORT = 3
 
 class Whiteboard:
 
@@ -24,7 +29,23 @@ class Whiteboard:
         self.other_clients = []
         self.running_on_port = running_on_port
         self.whiteboard_instance_port = whiteboard_instance_port
+        self.new_host_announced = False
+        self.keep_election_alive = None
         
+    def reset_info(self, width, height, instance_name, whiteboard_name, host_place, running_on_port, whiteboard_instance_port):
+
+        self.keep_server_running = True
+        self.start_window(width, height, instance_name, whiteboard_name)
+        self.render_interface = False
+        self.host_place = host_place
+        self.connections = []
+        self.lines_being_modified = []
+        self.line_i_want_is_safe_to_move = True
+        self.other_clients = []
+        self.running_on_port = running_on_port
+        self.whiteboard_instance_port = whiteboard_instance_port
+        self.new_host_announced = False
+        self.keep_election_alive = None
 
     def start_window(self, width, height, instance_name, whiteboard_name):
             
@@ -57,6 +78,7 @@ class Whiteboard:
         self.remote_thread.start()
         self.update_threads.append([self.remote_thread, conn])
         self.connections.append(conn)
+        self.keep_election_alive = True
 
     def start_local_thread(self, conn):
         # Function only used when a server accepts a client
@@ -68,8 +90,6 @@ class Whiteboard:
         self.connections.append(conn)
 
     def announce_new_client(self, port):
-
-        print("Announcing new client")
 
         if self.host_place == 'local':
 
@@ -91,11 +111,82 @@ class Whiteboard:
         elif self.host_place == 'remote':
             print(RED_COLOR_TEXT + "Remote received request to announce a client disconnection???" + RESET_COLOR_TEXT)
 
+    def start_election_await(self):
+
+        self.election_await_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.election_await_socket.bind(('127.0.0.1', self.whiteboard_instance_port + ELECTION_PORT))
+        self.election_await_socket.settimeout(1)
+
+        timestamps = []
+
+        while self.keep_election_alive:
+
+            try:
+
+                data, addr = self.election_await_socket.recvfrom(1024)
+
+                # Format: ELECTION;port;timestamp
+
+                data = data.decode()
+
+                if 'ELECTION' in data:
+
+                    port = int(data.split(';')[1])
+                    timestamp = int(data.split(';')[2])
+
+                    if port not in [record[0] for record in timestamps]:
+                        timestamps.append([port, timestamp])
+
+                    timestamps.sort(key=lambda x: x[1])
+
+                elif 'RESULT' in data:
+
+                    port = int(data.split(';')[1])
+
+                    print(GREEN_COLOR_TEXT + f"NEW HOST: {port}, please reset connection" + RESET_COLOR_TEXT)
+
+                    self.keep_server_running = False
+                    self.render_interface = False
+
+                    break
+
+            except Exception as e:
+                continue
+
+            if len(timestamps) == len(self.other_clients):
+
+                timestamps.sort(key=lambda x: x[1])
+
+                if timestamps[0][0] == self.whiteboard_instance_port:
+
+                    print("I am the new host")
+
+                    for port in self.other_clients:
+
+                        try:
+                            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                            sock.sendto(f"RESULT;{self.whiteboard_instance_port}".encode(), ('127.0.0.1', port + ELECTION_PORT))
+
+                        except ConnectionResetError:
+                            continue
+
+                    self.host_place = 'local'
+                    self.keep_server_running = True
+                    self.render_interface = False
+                    self.new_host_announced = True
+                    
+                    break
+
+        print("Election await thread finished")
+
     def render(self, host_place):
 
         self.initialize_pygame(self.whiteboard_name)
 
         self.host_place = host_place
+
+        self.start_election_thread = threading.Thread(target=self.start_election_await)
+        self.start_election_thread.start()
 
         if self.host_place == 'local':
             self.announce_new_client(self.running_on_port)
@@ -115,16 +206,23 @@ class Whiteboard:
         self.pygame_instance.quit()
 
         # Window closed
-        print("Window closed")
+
+        print(f"Window closed {self.new_host_announced}")
+
+        if self.new_host_announced:
+
+            self.keep_server_running = False
+            return 'im_new_host'
 
         if self.host_place == 'local':
             # Continue running the server
-            print("Window closed, but server is still running")
+            # print("Window closed, but server is still running")
             self.announce_client_disconnection(self.running_on_port)
             return True
+        
         elif self.host_place == 'remote':
 
-            print("Sending exit message to server")
+            # print("Sending exit message to server")
 
             try:
 
@@ -135,6 +233,8 @@ class Whiteboard:
                 print(RED_COLOR_TEXT + "Connection reset error" + RESET_COLOR_TEXT)
 
             self.keep_server_running = False
+            self.keep_election_alive = False
+            self.connections[0].close()
             return False
 
     def render_lines(self):
@@ -175,7 +275,7 @@ class Whiteboard:
 
                     # Response only received when a client disconnects from the server
 
-                    print(YELLOW_COLOR_TEXT + "Client disconnected" + RESET_COLOR_TEXT)
+                    # print(YELLOW_COLOR_TEXT + "Client disconnected" + RESET_COLOR_TEXT)
 
                     port = response.split(';')[1]
 
@@ -212,25 +312,25 @@ class Whiteboard:
 
                 elif 'P' in response:
 
-                    print(YELLOW_COLOR_TEXT + "New client connected" + RESET_COLOR_TEXT)
+                    # print(YELLOW_COLOR_TEXT + "New client connected" + RESET_COLOR_TEXT)
 
                     port = int(response[2:])
 
                     if port not in self.other_clients:
                         self.other_clients.append(port)
                         self.other_clients.sort()
-                        print(f"Connected clients: {self.other_clients}")
+                        # print(f"Connected clients: {self.other_clients}")
 
                 elif 'D' in response:
 
-                    print(YELLOW_COLOR_TEXT + "Client disconnected" + RESET_COLOR_TEXT)
+                    # print(YELLOW_COLOR_TEXT + "Client disconnected" + RESET_COLOR_TEXT)
 
                     port = int(response[2:])
 
                     if port in self.other_clients:
                         self.other_clients.remove(port)
                         self.other_clients.sort()
-                        print(f"Connected clients: {self.other_clients}")
+                        # print(f"Connected clients: {self.other_clients}")
 
                 elif 'C' in response:
                     # Create the line
@@ -316,10 +416,22 @@ class Whiteboard:
             except ConnectionResetError:
                 print(RED_COLOR_TEXT + "Connection with server has been lost!" + RESET_COLOR_TEXT)
                 print("Need to launch election to choose a new server!!")
-                print(f"Time of detection: {time.time_ns()}")
+
+                for port in self.other_clients:
+                    try:
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        sock.sendto(f"ELECTION;{self.whiteboard_instance_port};{time.time_ns()}".encode(), ('127.0.0.1', port + ELECTION_PORT))
+                    except ConnectionResetError:
+                        continue
+
                 self.render_interface = False
                 self.keep_server_running = False
                 break
+            
+            except Exception as e:
+                continue
+
+        print("Thread await changes finished")
 
     def line_creation_notice(self, line_start, line_end):
 

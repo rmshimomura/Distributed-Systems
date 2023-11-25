@@ -73,18 +73,27 @@ class Node:
 
     def exit_program(self):
 
+        print("Exiting...")
+
         for whiteboard in self.whiteboards_hosted.values():
 
             whiteboard.keep_server_running = False
-            
+
             for conn in whiteboard.connections:
 
                 conn.close()
                 time.sleep(0.01)
 
+        print("Whiteboards closed")
+
         self.running = False
         self.close_sockets()
+
+        print("Sockets closed")
+
         self.stop_threads()
+
+        print("Threads stopped")
 
     def start_variables(self, this_instance_name, this_instance_port, available_ports):
         
@@ -106,6 +115,7 @@ class Node:
         self.heartbeat_port = 0
         self.whiteboard_discover_port = 1
         self.whiteboard_transfer_port = 2
+        self.election_port = 3
         self.heartbeat_timeout = 2 * self.heartbeat_interval
 
     def start_sockets(self):
@@ -336,7 +346,7 @@ class Node:
                         conn.send(lines_string.encode())
 
                     if len(self.whiteboards_hosted[whiteboard_name].other_clients) > 0:
-                        print("Sending other clints")
+                        # print("Sending other clients")
                         conn.send(';'.join([str(x) for x in self.whiteboards_hosted[whiteboard_name].other_clients]).encode())
                     else:
                         conn.send('empty'.encode())
@@ -354,8 +364,6 @@ class Node:
                 continue
 
 if __name__ == "__main__":
-
-    discovered = False
 
     try:
 
@@ -396,14 +404,14 @@ if __name__ == "__main__":
 
         elif option == '2':
                 
-            discovered = available_whiteboards(instance)
+            available_whiteboards(instance)
 
             print(GREEN_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Available whiteboards updated" + RESET_COLOR_TEXT)
 
         elif option == '3':
             
             print(YELLOW_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Discovering available whiteboards... please wait." + RESET_COLOR_TEXT)
-            discovered = available_whiteboards(instance)
+            available_whiteboards(instance)
 
             print_available_whiteboards(instance)
 
@@ -415,9 +423,16 @@ if __name__ == "__main__":
                 print(GREEN_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Connected to {name}" + RESET_COLOR_TEXT)
 
                 if instance.connected_to_connection == None:
-                    instance.connected_to_whiteboard.render('local')
+                    election_result = instance.connected_to_whiteboard.render('local')
                 else:
-                    instance.connected_to_whiteboard.render('remote')
+                    election_result = instance.connected_to_whiteboard.render('remote')
+                    if election_result == 'im_new_host':
+                        instance.whiteboards_hosted[name] = instance.connected_to_whiteboard
+                        for conn in instance.whiteboards_hosted[name].connections:
+                            conn.close()
+                        instance.whiteboards_hosted[name].reset_info(WIDTH, HEIGHT, instance.name, name, 'local', instance.port, instance.port)
+                        
+                        print(GREEN_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] You are now hosting {name}" + RESET_COLOR_TEXT)
 
             elif response == 'not_connected':
                 print(RED_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Couldn't connect to {name}" + RESET_COLOR_TEXT)
