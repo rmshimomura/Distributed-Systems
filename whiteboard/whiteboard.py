@@ -101,7 +101,7 @@ class Whiteboard:
 
     def announce_client_disconnection(self, port):
             
-        print("Announcing client disconnection")
+        # print("Announcing client disconnection")
 
         if self.host_place == 'local':
 
@@ -143,7 +143,9 @@ class Whiteboard:
 
                     port = int(data.split(';')[1])
 
-                    print(GREEN_COLOR_TEXT + f"NEW HOST: {port}, please reset connection" + RESET_COLOR_TEXT)
+                    print(GREEN_COLOR_TEXT + f"==============================================" + RESET_COLOR_TEXT)
+                    print(GREEN_COLOR_TEXT + f"|| NEW HOST: {port}, please reset connection ||" + RESET_COLOR_TEXT)
+                    print(GREEN_COLOR_TEXT + f"==============================================" + RESET_COLOR_TEXT)
 
                     self.keep_server_running = False
                     self.render_interface = False
@@ -159,7 +161,7 @@ class Whiteboard:
 
                 if timestamps[0][0] == self.whiteboard_instance_port:
 
-                    print("I am the new host")
+                    print(YELLOW_COLOR_TEXT + "I am the new host" + RESET_COLOR_TEXT)
 
                     for port in self.other_clients:
 
@@ -177,7 +179,7 @@ class Whiteboard:
                     
                     break
 
-        print("Election await thread finished")
+        # print("Election await thread finished")
 
     def render(self, host_place):
 
@@ -207,30 +209,23 @@ class Whiteboard:
 
         # Window closed
 
-        print(f"Window closed {self.new_host_announced}")
-
         if self.new_host_announced:
 
             self.keep_server_running = False
             return 'im_new_host'
 
         if self.host_place == 'local':
-            # Continue running the server
-            # print("Window closed, but server is still running")
             self.announce_client_disconnection(self.running_on_port)
             return True
         
         elif self.host_place == 'remote':
 
-            # print("Sending exit message to server")
-
             try:
 
                 self.connections[0].send(f"EXIT;{self.whiteboard_instance_port}".encode())
                 
-
             except ConnectionResetError:
-                print(RED_COLOR_TEXT + "Connection reset error" + RESET_COLOR_TEXT)
+                pass
 
             self.keep_server_running = False
             self.keep_election_alive = False
@@ -415,7 +410,6 @@ class Whiteboard:
                 break
             except ConnectionResetError:
                 print(RED_COLOR_TEXT + "Connection with server has been lost!" + RESET_COLOR_TEXT)
-                print("Need to launch election to choose a new server!!")
 
                 for port in self.other_clients:
                     try:
@@ -430,8 +424,6 @@ class Whiteboard:
             
             except Exception as e:
                 continue
-
-        print("Thread await changes finished")
 
     def line_creation_notice(self, line_start, line_end):
 

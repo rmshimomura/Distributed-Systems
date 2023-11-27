@@ -180,9 +180,11 @@ class Node:
 
     def create_whiteboard(self):
 
-        if self.name not in self.whiteboards_hosted.keys():
+        name = input("Whiteboard name: ")
 
-            self.whiteboards_hosted[self.name] = whiteboard.Whiteboard(WIDTH, HEIGHT, self.name, self.name, 'local', self.port, self.port)
+        if name not in self.whiteboards_hosted.keys():
+
+            self.whiteboards_hosted[name] = whiteboard.Whiteboard(WIDTH, HEIGHT, name, name, 'local', self.port, self.port)
 
         else:
 
@@ -371,7 +373,7 @@ if __name__ == "__main__":
     
     except:
             
-        print(RED_COLOR_TEXT + "Invalid arguments" + RESET_COLOR_TEXT)
+        print(RED_COLOR_TEXT + "Invalid arguments, usage example: python3 connection.py node1" + RESET_COLOR_TEXT)
         sys.exit(1)
 
     NUMBER_OF_NODES = len(instances)
@@ -381,6 +383,7 @@ if __name__ == "__main__":
     while True:
 
         print("Instance name: " + YELLOW_COLOR_TEXT + f"{instance.name}" + RESET_COLOR_TEXT + " running on port " + YELLOW_COLOR_TEXT + f"{instance.port}" + RESET_COLOR_TEXT)
+        print("Current mode: " + YELLOW_COLOR_TEXT + f"{'Server' if len(instance.whiteboards_hosted) > 0 else 'Client'}" + RESET_COLOR_TEXT)
 
         print_available_whiteboards(instance)
 
@@ -399,8 +402,17 @@ if __name__ == "__main__":
         option = input("Choose an option: ")
 
         if option == '1':
-                
+            
+            if instance.connected_to_whiteboard != None:
+                print(RED_COLOR_TEXT + "This instance mode is client, you can't create a whiteboard" + RESET_COLOR_TEXT)
+                continue
+            if len(instance.whiteboards_hosted) > 0:
+                print(RED_COLOR_TEXT + "You can't create more than one whiteboard" + RESET_COLOR_TEXT)
+                continue
+
             instance.create_whiteboard()
+
+            print()
 
         elif option == '2':
                 
@@ -409,13 +421,18 @@ if __name__ == "__main__":
             print(GREEN_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Available whiteboards updated" + RESET_COLOR_TEXT)
 
         elif option == '3':
-            
+
             print(YELLOW_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Discovering available whiteboards... please wait." + RESET_COLOR_TEXT)
             available_whiteboards(instance)
 
             print_available_whiteboards(instance)
 
             name = input("Whiteboard name: ")
+
+            if len(instance.whiteboards_hosted) > 0:
+                if name not in instance.whiteboards_hosted.keys():
+                    print(RED_COLOR_TEXT + "This instance is a Server, you can't connect to a whiteboard hosted by another instance" + RESET_COLOR_TEXT)
+                    continue
 
             response = instance.request_whiteboard(name)
 
@@ -431,6 +448,8 @@ if __name__ == "__main__":
                         for conn in instance.whiteboards_hosted[name].connections:
                             conn.close()
                         instance.whiteboards_hosted[name].reset_info(WIDTH, HEIGHT, instance.name, name, 'local', instance.port, instance.port)
+                        instance.connected_to_connection = None
+                        instance.connected_to_whiteboard = None
                         
                         print(GREEN_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] You are now hosting {name}" + RESET_COLOR_TEXT)
 
@@ -446,6 +465,7 @@ if __name__ == "__main__":
         elif option == '5':
 
             instance.exit_program()
+            print(GREEN_COLOR_TEXT + f"[{datetime.datetime.now().time().strftime('%H:%M:%S')}] Program successfully exited" + RESET_COLOR_TEXT)
             sys.exit(0)
 
         else:
